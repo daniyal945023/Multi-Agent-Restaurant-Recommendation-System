@@ -1,1 +1,31 @@
+# --- Python Virtual Environments ---
+.venv/
+venv/
+ENV/
+ENV/
+*.pyc
+__pycache__/
+
+# --- Project Specific Data Assets ---
+# Never track massive downloaded datasets or archives in GitHub
+recipe_images.zip
+recipe_images_extracted/
+recipes.json
+synthetic_user_reviews.json
+
+# --- OS Specific Files ---
+.DS_Store
+Thumbs.db
+
+# --- Security & Credentials ---
+# In the future, if you move your Gemini API key to a .env file, this protects it
 .env
+config.secret
+
+# --- IDE and Editor Files ---
+.idea/
+.vscode/
+
+# --- Python Cache ---
+__pycache__/
+*.pyc
