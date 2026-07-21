@@ -1,0 +1,43 @@
+from config import gemini_client
+import numpy as np
+import matplotlib.pyplot as plt
+import json
+import urllib.request
+from pydantic import BaseModel, Field, ValidationError
+import zipfile
+from PIL import Image
+import os
+from downloader import recipes_json,recipe_images_zip,extracted_recipe_images,extract_dir
+
+#GOAL: Generate image captions from the image using llm.Align them with corresponding restaurant's json structured data
+# Result: JSON data will be enriched with multimodal context as well
+
+
+
+
+print("hello")
+
+
+with open(recipes_json, 'r') as file:
+    recipes_raw_data = file.read()
+
+recipe_data = json.loads(recipes_raw_data) #convert json to python dict
+
+for key,value in recipe_data[0].items():
+    print(f"{key}: {value}")
+
+
+
+
+# 5. Isolate images and open the first image file
+image_files = [f for f in extracted_recipe_images if not f.endswith("/")]
+if image_files:
+    first_image_path = os.path.join(extract_dir, image_files[0])
+    img = Image.open(first_image_path)
+    img.show()
+    print(f"Successfully opened: {image_files[0]}")
+else:
+    print("⚠️ The archive unzipped, but no images were found inside.")
+
+
+
