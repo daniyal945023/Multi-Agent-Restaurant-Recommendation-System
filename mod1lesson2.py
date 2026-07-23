@@ -14,6 +14,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_except
 from config import gemini_client
 from downloader import recipes_json, extract_dir, setup_assets, user_reviews_json
 
+#OUR MAIN GOAL HERE IS TO GET CAPTIONS(TEXTUAL CONTEXT) FROM IMAGES IN RECIPES AND REVIEWS
 # Retry if we hit an OpenAI API connection/rate limit exception
 @retry(
     stop=stop_after_attempt(5), 
@@ -84,7 +85,7 @@ if __name__ == "__main__":
 
     # 2. Open and load recipe JSON file data
     with open(recipes_json, 'r', encoding='utf-8') as file:
-        recipe_data = json.load(file)  
+        recipe_data = json.load(file)  #json.load converts list of json objects in file into python list of dicts
 
     print("\n Key-Value Pairs of the First Recipe:")
     if isinstance(recipe_data, list) and len(recipe_data) > 0:
@@ -96,31 +97,31 @@ if __name__ == "__main__":
     nested_image_folder = os.path.join(extract_dir, "synthetic_recipe_images")
 
     if os.path.exists(nested_image_folder):
-        raw_files = os.listdir(nested_image_folder)
+        raw_files = os.listdir(nested_image_folder) #save all files of nested_image_folder in a list
         valid_images = [f for f in raw_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        #filter out only the image files
         
     else:
         print(f"⚠️ Could not find the subfolder path: {nested_image_folder}")
 
     
 
-    # Caption all images
+    # use llm to generate caption for each image
     for i in range(len(recipe_data)):
         image_path = os.path.normpath(os.path.abspath(os.path.join(nested_image_folder, valid_images[i])))
         system_msg, user_msg = recipe_image_caption_prompt_template(recipe_data[i]["name"])
         response = multimodal_llm_model(system_msg, user_msg, image_path)
-        print(response)
-        recipe_data[i]["image_description"] = response 
+        recipe_data[i]["image_description"] = response  #save llm response in recipe data i.e the list of dicts with a new key
     print("All Done")
 
     # Write to the file
     filename = 'augmented_food_recipe.json'
     with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(recipe_data, f, indent=4, ensure_ascii=False)
+        json.dump(recipe_data, f, indent=4, ensure_ascii=False) #save the modified recipe_data in a new file
 
     # USER REVIEW DATA
-    with open(user_reviews_json, 'r', encoding='utf-8') as file:
-        user_review_data = json.load(file)  
+    with open("synthetic_user_reviews.json", 'r', encoding='utf-8') as file:
+        user_review_data = json.load(file) #again convert the list of json into python list of dicts to work with it 
 
     print("\n Key-Value Pairs of the First User Review:")
     if isinstance(user_review_data, list) and len(user_review_data) > 0:
@@ -140,7 +141,7 @@ if __name__ == "__main__":
                     print("Success")
                   except Exception as e:
                    print(f"All retries failed at url {img_url}:", e)
-                   continue
+                   continue  #skip the dict if image fetching from url failed
 
                   image_placeholder_path = "review_image_placeholder.jpg"
                   with open(image_placeholder_path, 'wb') as file:

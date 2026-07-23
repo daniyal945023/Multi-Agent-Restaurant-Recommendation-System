@@ -1,116 +1,22 @@
-from pydantic import BaseModel, Field, ValidationError
-from typing import List, Optional
+from pydantic import ValidationError
 import json
 import os
 import shutil
-import io
-import unittest
-from unittest.mock import patch
-from config import gemini_client
 
-# IMPORTANT: SOME PART IS REDONE FROM MODULE 1 LESSON 1
+from restaurant_llm import (
+    Restaurant,
+    clean_json_response,
+    json_auto_repair_prompt,
+    llm_model,
+    restaurant_data_structure_prompt,
+)
 
 FILEPATH = 'structured_restaurant_data.json'
 BACKUP_PATH = 'structured_restaurant_data.json.bak'
-EXAMPLE_RESTAURANT_PARAGRAPH = 'Down in **Santa Monica**, **Mar de Cortez** serves as a **sun-drenched**, **casual taqueria** specializing in **Baja-style seafood**. With a **4.2/5** rating, it captures the salt-air energy of the coast through its signature beer-battered snapper tacos and zesty octopus ceviche, making it a premier spot for open-air dining near the pier. Price range: '
-EXAMPLE_OUTPUT = """{
-    "name": "Mar de Cortez",
-    "location": "Santa Monica",
-    "type": "casual taqueria",
-    "food_style": "Baja-style seafood",
-    "rating": 4.2,
-    "price_range": 1,
-    "signatures": [
-        "beer-battered snapper tacos",
-        "zesty octopus ceviche"
-    ],
-    "vibe": "salt-air energy",
-    "environment": "a premier sun-drenched spot for open-air dining near the pier.",
-    "shortcomings": []
-}"""
-
-class Restaurant(BaseModel):
-    name: str
-    location: str
-    type: str
-    food_style: str
-    rating: Optional[float] = None
-    price_range: Optional[int] = None
-    signatures: List[str] = Field(default_factory=list)
-    vibe: Optional[str] = None
-    environment: str
-    shortcomings: List[str] = Field(default_factory=list)
-
-
-## Exercise 1: Integrate the LLM model from Lesson 1
-
-def restaurant_data_structure_prompt_generation(restaurant_paragraph: str):
-    base_system_prompt = f"""You are a precise data extraction engine. Your sole task is to transform unstructured paragraphs into a valid JSON object matching the exact structure and keys demonstrated in the user's provided example.
-
-CRITICAL OPERATIONAL RULES:
-1. OUTPUT FORMAT: Respond ONLY with a single, valid JSON object. Do not wrap the JSON inside markdown code blocks (e.g., do not use ```json ... ```). Do not include any introductory text, explanatory notes, or trailing comments.
-2. SCHEMA COMPLIANCE: Your JSON output must match the exact data types, key names, and array structures shown in the user's template example.
-3. DATA INTEGRITY: Extract information faithfully from the source text. Do not invent, extrapolate, or assume facts not explicitly stated in the paragraph.
-4. MISSING DATA: If a specific field/key cannot be found in the unstructured text, set its value exactly to null (or an empty array `[]` for lists). Do not omit the key from the JSON structure.
-"""
-    base_user_prompt = f"""
-    Task:
-    Extract structured data from the provided "Restaurant description" and format it as a valid JSON object. 
-    You must strictly follow the schema, key names, and data types shown in the "Example" below. 
-    Do not add any conversational text, markdown formatting, or code blocks. Output the raw JSON string only.
-
-    Restaurant description:
-    {restaurant_paragraph}
-
-    Example:
-    Input Restaurant Description: {EXAMPLE_RESTAURANT_PARAGRAPH}
-    Output:
-    {EXAMPLE_OUTPUT}
-    """
-
-    return base_system_prompt, base_user_prompt
-
-
-def llm_model(system_msg, user_msg, params=None):
-    messages = [
-        {"role": "system", "content": system_msg},
-        {"role": "user", "content": user_msg}
-    ]
-
-    response = gemini_client.chat.completions.create(
-        model='gemini-2.5-flash',
-        messages=messages
-    )
-
-    output = response.choices[0].message.content
-    return output
-
-
-def JSON_auto_repair_prompts(candidate_json_output, error_message):
-    auto_repair_system_message = f"""You are a precise data correction engine specializing in Pydantic validation repairs. Your sole task is to take an invalid JSON payload that failed code validation, analyze the error feedback, and output a completely fixed, structural JSON object.
-
-CRITICAL OPERATIONAL RULES:
-1. OUTPUT FORMAT: Respond ONLY with a single, valid JSON object. Do not wrap the JSON inside markdown code blocks (e.g., do not use ```json ... ```). Do not include any introductory text, explanatory notes, or trailing comments.
-2. SCHEMA ADHERENCE: You must alter the values, structural nesting, or missing keys strictly to satisfy the validation error rules provided.
-3. PRESERVE INFORMATION: Retain all valid data points from the original wrong output. Only mutate fields that are explicitly causing the validation crash."""
-
-    auto_repair_prompt = f""" Task:
-    Analyze the provided "Invalid JSON Output" along with its corresponding validation failure details. Clean, reformat, and repair the payload so that it cleanly validates against the required Pydantic schema structure.
-
-    Invalid JSON Output to Fix:
-    {candidate_json_output}
-
-    Pydantic Validation Error Details:
-    {error_message}
-    
-    Output the corrected raw JSON string only.
-    """
-
-    return auto_repair_system_message, auto_repair_prompt
 
 
 def new_data_entry_process(paragraph, itemId):
-    system_msg, user_msg = restaurant_data_structure_prompt_generation(paragraph)
+    system_msg, user_msg = restaurant_data_structure_prompt(paragraph)
     json_response = llm_model(system_msg, user_msg)
     
     attempts = 0
@@ -120,7 +26,7 @@ def new_data_entry_process(paragraph, itemId):
     while attempts < max_attempts:
         try:
             # Clean possible markdown wrapping blocks
-            clean_json_string = json_response.replace("```json", "").replace("```", "").strip()
+            clean_json_string = clean_json_response(json_response)
             # Validate and convert into a Restaurant model
             data = Restaurant.model_validate_json(clean_json_string)
             print(f"Success! Validated: {data.name}")
@@ -133,7 +39,7 @@ def new_data_entry_process(paragraph, itemId):
                 break
             
             # Use self-repair prompt to let the LLM fix the validation errors
-            correction_system_prompt, correction_user_prompt = JSON_auto_repair_prompts(json_response, e.json())
+            correction_system_prompt, correction_user_prompt = json_auto_repair_prompt(json_response, e.json())
             json_response = llm_model(correction_system_prompt, correction_user_prompt)
 
     # Return python dictionary if we successfully parsed and validated the object
@@ -202,7 +108,7 @@ def manage_restaurants(file_path, backup_path):
             record_index = input(">Enter your desired index: ")
             try:
                 record_index = int(record_index)
-                if 0 <= record_index < len(data):
+                if 0 <= record_index < len(data): #show only IF record index lies b/w 0 and len-1
                     show_restaurant_card(data[record_index], record_index)
                 else:
                     print("invalid index.")
@@ -216,7 +122,7 @@ def manage_restaurants(file_path, backup_path):
             confirm = input("Are you sure? (type 'yes' to proceed): ").lower()
             if confirm != 'yes':
                 print("Operation cancelled.")
-                continue
+                continue #re-ask for choice, if answer is not yes
 
             if choice == '3': # ADD NEW DATA
                 itemId = 1000000 + len(data) + 1  # the item id for the new data
@@ -244,9 +150,9 @@ def manage_restaurants(file_path, backup_path):
                             
                             current_value = restaurant[key]
                             if isinstance(current_value, list):
-                                current_value_str = ", ".join(current_value)
+                                current_value_str = ", ".join(current_value) #if the value of key is a list,convert it to comma separated string
                             else:
-                                current_value_str = str(current_value)
+                                current_value_str = str(current_value) #else just convert to string
                             
                             new_value = input(f"{key} [{current_value_str}]: ")
                             if new_value.strip() != "":
