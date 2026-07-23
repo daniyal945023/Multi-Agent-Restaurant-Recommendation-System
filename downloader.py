@@ -8,7 +8,7 @@ user_reviews_json = "synthetic_user_reviews.json"
 recipe_images_zip = "recipe_images.zip"
 extract_dir = "recipe_images_extracted"
 
-def setup_assets():
+def ensure_assets_downloaded():
     # 1. Download JSON data only if missing
     if not os.path.exists(recipes_json):
         print("📥 Downloading Recipes JSON...")

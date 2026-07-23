@@ -12,7 +12,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_except
 
 # Import config details and variables from your asset builder
 from config import gemini_client
-from downloader import recipes_json, extract_dir, setup_assets, user_reviews_json
+from downloader import recipes_json, extract_dir, ensure_assets_downloaded, user_reviews_json
 
 #OUR MAIN GOAL HERE IS TO GET CAPTIONS(TEXTUAL CONTEXT) FROM IMAGES IN RECIPES AND REVIEWS
 # Retry if we hit an OpenAI API connection/rate limit exception
@@ -81,7 +81,7 @@ def get_data_with_retry(url):
 #MAIN FUNCTION for execution
 if __name__ == "__main__":
     # 1. Run the asset setup function and fetch the image file strings
-    image_files = setup_assets()
+    ensure_assets_downloaded()
 
     # 2. Open and load recipe JSON file data
     with open(recipes_json, 'r', encoding='utf-8') as file:
@@ -98,11 +98,11 @@ if __name__ == "__main__":
 
     if os.path.exists(nested_image_folder):
         raw_files = os.listdir(nested_image_folder) #save all files of nested_image_folder in a list
-        valid_images = [f for f in raw_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
+        valid_images = sorted(f for f in raw_files if f.lower().endswith(('.png', '.jpg', '.jpeg')))
         #filter out only the image files
         
     else:
-        print(f"⚠️ Could not find the subfolder path: {nested_image_folder}")
+        raise FileNotFoundError(f"Could not find image folder: {nested_image_folder}")
 
     
 
@@ -120,7 +120,7 @@ if __name__ == "__main__":
         json.dump(recipe_data, f, indent=4, ensure_ascii=False) #save the modified recipe_data in a new file
 
     # USER REVIEW DATA
-    with open("synthetic_user_reviews.json", 'r', encoding='utf-8') as file:
+    with open(user_reviews_json, 'r', encoding='utf-8') as file:
         user_review_data = json.load(file) #again convert the list of json into python list of dicts to work with it 
 
     print("\n Key-Value Pairs of the First User Review:")
