@@ -55,7 +55,7 @@ EXAMPLE_OUTPUT = """
     }}
 """
 
-def generate_prompt(restaurant_paragraph: str):
+def restaurant_data_structure_prompt(restaurant_paragraph: str):
     base_system_prompt = f"""You are a precise data extraction engine. Your sole task is to transform unstructured paragraphs into a valid JSON object matching the exact structure and keys demonstrated in the user's provided example.
 
 CRITICAL OPERATIONAL RULES:
@@ -64,7 +64,7 @@ CRITICAL OPERATIONAL RULES:
 3. DATA INTEGRITY: Extract information faithfully from the source text. Do not invent, extrapolate, or assume facts not explicitly stated in the paragraph.
 4. MISSING DATA: If a specific field/key cannot be found in the unstructured text, set its value exactly to null (or an empty array `[]` for lists). Do not omit the key from the JSON structure.
 """
-    base_user_prompt = base_user_prompt = f"""
+    base_user_prompt = f"""
     Task:
     Extract structured data from the provided "Restaurant description" and format it as a valid JSON object. 
     You must strictly follow the schema, key names, and data types shown in the "Example" below. 
@@ -124,9 +124,10 @@ CRITICAL OPERATIONAL RULES:
     return auto_repair_system_message,auto_repair_prompt
 
 
+
 structured_restaurant_list = [] #save structured json data in this list
 for i,restaurant_paragraph in enumerate(restaurant_list):
-    system_prompt,user_prompt = generate_prompt(restaurant_paragraph)
+    system_prompt,user_prompt = restaurant_data_structure_prompt(restaurant_paragraph)
     candidate_json_response = llm_model(system_prompt,user_prompt)
 
     attempts = 0
@@ -159,10 +160,11 @@ print('ALL DONE!!')
 
 print(structured_restaurant_list[49])
 
-#convert json to python dictionary using json.loads
-structured_restaurant_lists_json = [json.loads(response) for response in structured_restaurant_list]
 
-#For each item in the restaurant list, assign it with an itemId to be consistent with the one in the user review data:
+# convert Pydantic model objects directly into Python dictionaries
+structured_restaurant_lists_json = [response.model_dump() for response in structured_restaurant_list]
+
+#For each item in the restaurant list, assign it with an itemId to be consistent:
 for i, response in enumerate(structured_restaurant_lists_json):
     response['itemId'] = 1000001 + i
     structured_restaurant_lists_json[i] = response

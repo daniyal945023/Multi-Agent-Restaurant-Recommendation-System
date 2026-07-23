@@ -1,22 +1,25 @@
 # main.py
 import json
 import os
+import openai
 from PIL import Image
 from pydantic import BaseModel, Field
 import base64
 import mimetypes
 import ast
 import requests
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_exception_type
 
 # Import config details and variables from your asset builder
 from config import gemini_client
 from downloader import recipes_json, extract_dir, setup_assets, user_reviews_json
 
-# =====================================================================
-# KEEP ONLY FUNCTION DEFINITIONS AT THE TOP LEVEL
-# =====================================================================
-
+# Retry if we hit an OpenAI API connection/rate limit exception
+@retry(
+    stop=stop_after_attempt(5), 
+    wait=wait_exponential(multiplier=2, min=4, max=16),
+    retry=retry_if_exception_type((openai.RateLimitError, openai.APIConnectionError))
+)
 def multimodal_llm_model(system_msg, user_msg, image_path):
     mime_type, _ = mimetypes.guess_type(image_path)
     if not mime_type:
@@ -96,24 +99,10 @@ if __name__ == "__main__":
         raw_files = os.listdir(nested_image_folder)
         valid_images = [f for f in raw_files if f.lower().endswith(('.png', '.jpg', '.jpeg'))]
         
-        if valid_images:
-            first_image_path = os.path.normpath(os.path.abspath(os.path.join(nested_image_folder, valid_images[0])))
-            
-            with Image.open(first_image_path) as img:
-                img.verify()
-            
-            os.startfile(first_image_path)
-            print(f"Successfully opened: {valid_images[0]}")
-        else:
-            print("⚠️ No valid image files (.png, .jpg) found inside the subfolder.")
     else:
         print(f"⚠️ Could not find the subfolder path: {nested_image_folder}")
 
-    # Process first recipe
-    system_msg, user_msg = recipe_image_caption_prompt_template(recipe_data[0]["name"])
-    response = multimodal_llm_model(system_msg, user_msg, first_image_path)
-    print(response)
-    recipe_data[0]["image_description"] = response
+    
 
     # Caption all images
     for i in range(len(recipe_data)):
