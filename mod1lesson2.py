@@ -8,6 +8,7 @@ import base64
 import mimetypes
 import ast
 import requests
+import time
 from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_exception_type
 
 # Import config details and variables from your asset builder
@@ -15,6 +16,27 @@ from config import gemini_client
 from downloader import recipes_json, extract_dir, ensure_assets_downloaded, user_reviews_json
 
 #OUR MAIN GOAL HERE IS TO GET CAPTIONS(TEXTUAL CONTEXT) FROM IMAGES IN RECIPES AND REVIEWS
+REQUEST_DELAY_SECONDS = 1
+RECIPE_OUTPUT_FILE = 'augmented_food_recipe.json'
+REVIEW_OUTPUT_FILE = 'augmented_user_review_data.json'
+
+
+def save_json(filename, data):
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+def load_json_if_exists(filename):
+    if not os.path.exists(filename):
+        return None
+    try:
+        with open(filename, 'r', encoding='utf-8') as file:
+            return json.load(file)
+    except json.JSONDecodeError:
+        print(f"Could not resume from {filename}; rebuilding it.")
+        return None
+
+
 # Retry if we hit an OpenAI API connection/rate limit exception
 @retry(
     stop=stop_after_attempt(5), 
@@ -84,8 +106,12 @@ if __name__ == "__main__":
     ensure_assets_downloaded()
 
     # 2. Open and load recipe JSON file data
-    with open(recipes_json, 'r', encoding='utf-8') as file:
-        recipe_data = json.load(file)  #json.load converts list of json objects in file into python list of dicts
+    recipe_data = load_json_if_exists(RECIPE_OUTPUT_FILE)
+    if recipe_data is None:
+        with open(recipes_json, 'r', encoding='utf-8') as file:
+            recipe_data = json.load(file)  #json.load converts list of json objects in file into python list of dicts
+    else:
+        print(f"Resuming recipe captions from {RECIPE_OUTPUT_FILE}.")
 
     print("\n Key-Value Pairs of the First Recipe:")
     if isinstance(recipe_data, list) and len(recipe_data) > 0:
@@ -108,20 +134,30 @@ if __name__ == "__main__":
 
     # use llm to generate caption for each image
     for i in range(len(recipe_data)):
+        if recipe_data[i].get("image_description"):
+            continue
+
         image_path = os.path.normpath(os.path.abspath(os.path.join(nested_image_folder, valid_images[i])))
         system_msg, user_msg = recipe_image_caption_prompt_template(recipe_data[i]["name"])
-        response = multimodal_llm_model(system_msg, user_msg, image_path)
+        try:
+            response = multimodal_llm_model(system_msg, user_msg, image_path)
+        except Exception as e:
+            print(f"Stopping recipe captions at index {i} after retries failed: {e}")
+            break
         recipe_data[i]["image_description"] = response  #save llm response in recipe data i.e the list of dicts with a new key
+        save_json(RECIPE_OUTPUT_FILE, recipe_data)
+        if REQUEST_DELAY_SECONDS:
+            time.sleep(REQUEST_DELAY_SECONDS)
     print("All Done")
-
-    # Write to the file
-    filename = 'augmented_food_recipe.json'
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(recipe_data, f, indent=4, ensure_ascii=False) #save the modified recipe_data in a new file
+    save_json(RECIPE_OUTPUT_FILE, recipe_data) #save the modified recipe_data in a new file
 
     # USER REVIEW DATA
-    with open(user_reviews_json, 'r', encoding='utf-8') as file:
-        user_review_data = json.load(file) #again convert the list of json into python list of dicts to work with it 
+    user_review_data = load_json_if_exists(REVIEW_OUTPUT_FILE)
+    if user_review_data is None:
+        with open(user_reviews_json, 'r', encoding='utf-8') as file:
+            user_review_data = json.load(file) #again convert the list of json into python list of dicts to work with it 
+    else:
+        print(f"Resuming review captions from {REVIEW_OUTPUT_FILE}.")
 
     print("\n Key-Value Pairs of the First User Review:")
     if isinstance(user_review_data, list) and len(user_review_data) > 0:
@@ -131,7 +167,11 @@ if __name__ == "__main__":
         print("User Review JSON data is empty or structurally invalid.")
 
     #workflow for i items in user_review_data
+    stop_review_processing = False
     for i in range(len(user_review_data)):
+       if "image_captions" in user_review_data[i]:
+            continue
+
        img_url_list = ast.literal_eval(user_review_data[i]["images"]) #convert stuck list in string to a list
        review_image_captions = []
        if len(img_url_list) > 0:
@@ -148,13 +188,20 @@ if __name__ == "__main__":
                      file.write(img_data.content) #write data in .jpg file
             
                   system_msg,user_msg = review_image_caption_prompt_template(user_review_data[i]["text"])
-                  llm_response = multimodal_llm_model(system_msg,user_msg,"review_image_placeholder.jpg")
+                  try:
+                    llm_response = multimodal_llm_model(system_msg,user_msg,"review_image_placeholder.jpg")
+                  except Exception as e:
+                   print(f"Stopping review captions at review index {i} after retries failed: {e}")
+                   stop_review_processing = True
+                   break
                   review_image_captions.append(llm_response)
+                  if REQUEST_DELAY_SECONDS:
+                    time.sleep(REQUEST_DELAY_SECONDS)
             
+       if stop_review_processing:
+            break
+
        user_review_data[i]['image_captions'] = review_image_captions
+       save_json(REVIEW_OUTPUT_FILE, user_review_data)
     
-
-
-    filename = 'augmented_user_review_data.json'
-    with open(filename, 'w', encoding='utf-8') as f:
-        json.dump(user_review_data, f,indent=4, ensure_ascii=False)
+    save_json(REVIEW_OUTPUT_FILE, user_review_data)

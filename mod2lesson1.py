@@ -185,3 +185,6 @@ image_db._collection.upsert(
 
 print("✅ Image DB ready")
 print("🎉 Multimodal Vector Index Construction COMPLETE")
+
+#DONE WITH STORING EMBEDDED AND UN-EMBEDDED DOCUMENTS IN CHROMA VECTOR DB
+#next step is similarity retrieval

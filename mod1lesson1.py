@@ -17,6 +17,7 @@ DATA_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/1
 OUTPUT_FILE = "california_culinary_map.txt"
 JSON_OUTPUT_FILE = "structured_restaurant_data.json"
 REQUEST_DELAY_SECONDS = 1
+REPAIR_DELAY_SECONDS = 2
 MAX_REPAIR_ATTEMPTS = 3
 
 
@@ -50,17 +51,50 @@ def structure_and_validate_restaurant(restaurant_paragraph, index, max_attempts=
                 candidate_json_response,
                 e.json(),
             )
+            if REPAIR_DELAY_SECONDS:
+                time.sleep(REPAIR_DELAY_SECONDS)
             candidate_json_response = llm_model(correction_system_prompt, correction_user_prompt)
+
+
+def load_existing_structured_data(json_output_file=JSON_OUTPUT_FILE):
+    if not json_output_file or not json_output_file.endswith(".json"):
+        return []
+    try:
+        with open(json_output_file, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            return data
+    except FileNotFoundError:
+        pass
+    except json.JSONDecodeError:
+        print(f"Could not resume from {json_output_file}; starting fresh.")
+    return []
+
+
+def save_structured_data(structured_restaurant_list, json_output_file=JSON_OUTPUT_FILE):
+    with open(json_output_file, "w", encoding="utf-8") as f:
+        json.dump(structured_restaurant_list, f, indent=4)
 
 
 def build_structured_restaurant_data(request_delay_seconds=REQUEST_DELAY_SECONDS):
     restaurant_list = load_restaurant_paragraphs()
-    structured_restaurant_list = []
+    structured_restaurant_list = load_existing_structured_data()
+    start_index = len(structured_restaurant_list)
 
-    for i, restaurant_paragraph in enumerate(restaurant_list):
-        data = structure_and_validate_restaurant(restaurant_paragraph, i) #get llm response and validate each restaurant
+    if start_index:
+        print(f"Resuming from {JSON_OUTPUT_FILE}; {start_index} records already saved.")
+
+    for i, restaurant_paragraph in enumerate(restaurant_list[start_index:], start=start_index):
+        try:
+            data = structure_and_validate_restaurant(restaurant_paragraph, i) #get llm response and validate each restaurant
+        except Exception as e:
+            print(f"Stopping at restaurant {i} after API/error retries failed: {e}")
+            break
         if data is not None:
-            structured_restaurant_list.append(data) #append pydantic object to list
+            response = data.model_dump()
+            response["itemId"] = 1000001 + len(structured_restaurant_list)
+            structured_restaurant_list.append(response) #append validated dict to list
+            save_structured_data(structured_restaurant_list)
 
         if request_delay_seconds:
             time.sleep(request_delay_seconds)
@@ -68,23 +102,12 @@ def build_structured_restaurant_data(request_delay_seconds=REQUEST_DELAY_SECONDS
         if (i + 1) % 20 == 0:  #track progress
             print(f"{i + 1} out of {len(restaurant_list)} is done")
 
-    structured_restaurant_lists_json = [
-        response.model_dump() for response in structured_restaurant_list
-    ] #convert each pydantic object in list to python dicts
-
-    for i, response in enumerate(structured_restaurant_lists_json):
-        response["itemId"] = 1000001 + i   #set unique id
-
-    with open(JSON_OUTPUT_FILE, "w", encoding="utf-8") as f:
-        json.dump(structured_restaurant_lists_json, f, indent=4) #convert the list of dicts into a list of json data and save to json output file
-
     print("ALL DONE!!")
-    return structured_restaurant_lists_json  #return the list of dicts
+    return structured_restaurant_list  #return the list of dicts
 
 
 if __name__ == "__main__":
     build_structured_restaurant_data()
-
 
 
 

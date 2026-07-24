@@ -2,6 +2,7 @@ from pydantic import ValidationError
 import json
 import os
 import shutil
+import time
 
 from restaurant_llm import (
     Restaurant,
@@ -13,6 +14,7 @@ from restaurant_llm import (
 
 FILEPATH = 'structured_restaurant_data.json'
 BACKUP_PATH = 'structured_restaurant_data.json.bak'
+REQUEST_DELAY_SECONDS = 1
 
 
 def new_data_entry_process(paragraph, itemId):
@@ -40,6 +42,8 @@ def new_data_entry_process(paragraph, itemId):
             
             # Use self-repair prompt to let the LLM fix the validation errors
             correction_system_prompt, correction_user_prompt = json_auto_repair_prompt(json_response, e.json())
+            if REQUEST_DELAY_SECONDS:
+                time.sleep(REQUEST_DELAY_SECONDS)
             json_response = llm_model(correction_system_prompt, correction_user_prompt)
 
     # Return python dictionary if we successfully parsed and validated the object
@@ -83,6 +87,10 @@ def show_restaurant_card(res, index):
 
 
 def manage_restaurants(file_path, backup_path):
+    if not os.path.exists(file_path):
+        print(f"Could not find {file_path}. Run mod1lesson1.py first to create it.")
+        return
+
     while True:
         data = load_data(file_path)  # get the list
         print(f"\n🏨 RESTAURANT DATABASE | Records: {len(data)}")
