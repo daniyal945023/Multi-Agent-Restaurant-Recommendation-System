@@ -219,14 +219,13 @@ img.thumbnail((300, 300))
 display(img)
 # display(Image.open(query_img))
 
-# TODO:
-# 1. Create an optional metadata filter for recipe images
+
 metadata_filter = {
     "location": "Pasadena"
 }
-# 2. Retrieve the top-5 most similar images using query_img
+
 ids,docs,metas,dists = retrieve_images_by_image(query_img, 5,metadata_filter)
-# 3. Display the retrieved results with metadata (use title="Demo 3 — Image similarity search (image→image)" when printing results)
+
 print_hits(ids, docs, metas, dists, title="Demo 3 — Image similarity search (image→image)")
 
 # your code here
