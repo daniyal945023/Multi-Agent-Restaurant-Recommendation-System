@@ -246,8 +246,8 @@ Social Media Posts:
 
 def test_agent(agent_prompt: str, user_input: str) -> str:
     """Test an agent by sending it a sample input."""
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = gemini_client.chat.completions.create(
+        model="gemini-2.5-flash",
         temperature=0.7,
         messages=[
             {"role": "system", "content": agent_prompt},
