@@ -16,8 +16,8 @@ from restaurant_llm import (
 DATA_URL = "https://cf-courses-data.s3.us.cloud-object-storage.appdomain.cloud/1r_mM6ZPYNxcFv65QkzubA/California-Culinary-Map.txt"
 OUTPUT_FILE = "california_culinary_map.txt"
 JSON_OUTPUT_FILE = "structured_restaurant_data.json"
-REQUEST_DELAY_SECONDS = 1
-REPAIR_DELAY_SECONDS = 2
+REQUEST_DELAY_SECONDS = 4.5
+REPAIR_DELAY_SECONDS = 4.5
 MAX_REPAIR_ATTEMPTS = 3
 
 

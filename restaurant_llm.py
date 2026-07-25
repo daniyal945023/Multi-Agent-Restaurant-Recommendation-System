@@ -1,9 +1,7 @@
 from typing import List, Optional
-
 import openai
 from pydantic import BaseModel, Field
-from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_random_exponential
-
+from tenacity import retry,retry_if_exception, retry_if_exception_type, stop_after_attempt, wait_random_exponential
 from config import gemini_client
 
 
@@ -94,11 +92,20 @@ CRITICAL OPERATIONAL RULES:
 
     return system_prompt, user_prompt
 
+def is_retryable_exception(exception: Exception) -> bool:
+    # Retry on standard rate limit and connection errors
+    if isinstance(exception, (openai.RateLimitError, openai.APIConnectionError)):
+        return True
+    # Retry on specific HTTP status codes (429 Rate Limit, 5xx Server Errors)
+    if isinstance(exception, openai.APIStatusError):
+        return exception.status_code in [429, 500, 502, 503, 504]
+    return False
+
 
 @retry(
-    stop=stop_after_attempt(5),
-    wait=wait_random_exponential(multiplier=2, min=4, max=30),
-    retry=retry_if_exception_type((openai.RateLimitError, openai.APIConnectionError)),
+    stop=stop_after_attempt(8),
+    wait=wait_random_exponential(multiplier=2, min=4, max=60),
+    retry=retry_if_exception(is_retryable_exception),
 )
 def llm_model(system_msg, user_msg):
     messages = [

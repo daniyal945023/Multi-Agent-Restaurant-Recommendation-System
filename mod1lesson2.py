@@ -9,14 +9,14 @@ import mimetypes
 import ast
 import requests
 import time
-from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_exception_type
+from tenacity import retry, stop_after_attempt, wait_exponential,retry_if_exception_type, retry_if_exception
 
 # Import config details and variables from your asset builder
 from config import gemini_client
 from downloader import recipes_json, extract_dir, ensure_assets_downloaded, user_reviews_json
 
 #OUR MAIN GOAL HERE IS TO GET CAPTIONS(TEXTUAL CONTEXT) FROM IMAGES IN RECIPES AND REVIEWS
-REQUEST_DELAY_SECONDS = 1
+REQUEST_DELAY_SECONDS = 4.5
 RECIPE_OUTPUT_FILE = 'augmented_food_recipe.json'
 REVIEW_OUTPUT_FILE = 'augmented_user_review_data.json'
 
@@ -38,10 +38,19 @@ def load_json_if_exists(filename):
 
 
 # Retry if we hit an OpenAI API connection/rate limit exception
+def is_retryable_exception(exception: Exception) -> bool:
+    # Retry on standard rate limit and connection errors
+    if isinstance(exception, (openai.RateLimitError, openai.APIConnectionError)):
+        return True
+    # Retry on specific HTTP status codes (429 Rate Limit, 5xx Server Errors)
+    if isinstance(exception, openai.APIStatusError):
+        return exception.status_code in [429, 500, 502, 503, 504]
+    return False
+
 @retry(
-    stop=stop_after_attempt(5), 
-    wait=wait_exponential(multiplier=2, min=4, max=16),
-    retry=retry_if_exception_type((openai.RateLimitError, openai.APIConnectionError))
+    stop=stop_after_attempt(8), 
+    wait=wait_exponential(multiplier=2, min=4, max=60),
+    retry=retry_if_exception(is_retryable_exception)
 )
 def multimodal_llm_model(system_msg, user_msg, image_path):
     mime_type, _ = mimetypes.guess_type(image_path)
